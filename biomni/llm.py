@@ -11,7 +11,15 @@ from langchain_ollama import ChatOllama
 from langchain_openai import AzureChatOpenAI, ChatOpenAI
 
 SourceType = Literal["OpenAI", "AzureOpenAI", "Anthropic", "Ollama", "Gemini", "Bedrock", "Custom"]
+<<<<<<< HEAD
+<<<<<<< HEAD
+os.environ['OPENAI_API_KEY']=""
+=======
 
+>>>>>>> parent of 7afe205 (Updated to local progress)
+=======
+
+>>>>>>> parent of 7afe205 (Updated to local progress)
 
 def get_llm(
     model: str = "claude-3-5-sonnet-20241022",
