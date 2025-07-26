@@ -759,6 +759,12 @@ Otherwise the system will not be able to know what has been done.
 For R code, use the #!R marker at the beginning of your code block to indicate it's R code.
 For Bash scripts and commands, use the #!BASH marker at the beginning of your code block. This allows for both simple commands and multi-line scripts with variables, loops, conditionals, loops, and other Bash features.
 
+IMPORTANT: If you encounter execution errors (such as missing modules or import errors), try to work around them by:
+1. Installing the missing module if possible using pip install
+2. Using alternative approaches or libraries
+3. Modifying your approach to work with available resources
+4. If all else fails, provide a clear explanation of the limitation and suggest alternative solutions
+
 In each response, you must include EITHER <execute> or <solution> tag. Not both at the same time. Do not respond with messages without any tags. No empty messages.
 """
 
@@ -990,26 +996,31 @@ Each library is listed with its description to help you understand its functiona
                 print("parsing error...")
                 # Check if we already added an error message to avoid infinite loops
                 error_count = sum(
-                    1 for m in state["messages"] if isinstance(m, AIMessage) and "There are no tags" in m.content
+                    1 for m in state["messages"]
+                    if isinstance(m, HumanMessage) and "There are no tags" in m.content
                 )
 
-                if error_count >= 2:
-                    # If we've already tried to correct the model twice, just end the conversation
-                    print("Detected repeated parsing errors, ending conversation")
+                if error_count >= 3:  # Allow more attempts before giving up
+                    # If we've already tried to correct the model multiple times, provide a helpful solution
+                    print("Detected repeated parsing errors, providing fallback response")
                     state["next_step"] = "end"
-                    # Add a final message explaining the termination
-                    state["messages"].append(
-                        AIMessage(
-                            content="Execution terminated due to repeated parsing errors. Please check your input and try again."
-                        )
+                    # Replace the last AI message with a helpful fallback
+                    state["messages"][-1] = AIMessage(
+                        content="I apologize for the parsing errors. Let me provide a structured response:\n\n"
+                        + "<solution>I encountered technical difficulties with response formatting. "
+                        + "Please try rephrasing your request or breaking it into smaller, more specific tasks. "
+                        + "If you're experiencing persistent issues, consider restarting the conversation.</solution>"
                     )
                 else:
-                    # Try to correct it
-                    state["messages"].append(
-                        HumanMessage(
-                            content="Each response must include thinking process followed by either <execute> or <solution> tag. But there are no tags in the current response. Please follow the instruction, fix and regenerate the response again."
-                        )
+                    # Try to correct it with more specific guidance
+                    correction_msg = (
+                        "Your response must follow this exact format:\n"
+                        "1. First, provide your thinking and reasoning\n"
+                        "2. Then use EITHER <execute>code here</execute> OR <solution>answer here</solution>\n"
+                        "3. Make sure to close all tags properly\n"
+                        "Please regenerate your response following this format."
                     )
+                    state["messages"].append(HumanMessage(content=correction_msg))
                     state["next_step"] = "generate"
             return state
 
@@ -1033,7 +1044,7 @@ Each library is listed with its description to help you understand its functiona
                     or code.strip().startswith("# R script")
                 ):
                     # Remove the R marker and run as R code
-                    r_code = re.sub(r"^#!R|^# R code|^# R script", "", code, 1).strip()  # noqa: B034
+                    r_code = re.sub(r"^#!R|^# R code|^# R script", "", code, 1).strip()
                     result = run_with_timeout(run_r_code, [r_code], timeout=timeout)
                 # Check if the code is a Bash script or CLI command
                 elif (
@@ -1044,13 +1055,13 @@ Each library is listed with its description to help you understand its functiona
                     # Handle both Bash scripts and CLI commands with the same function
                     if code.strip().startswith("#!CLI"):
                         # For CLI commands, extract the command and run it as a simple bash script
-                        cli_command = re.sub(r"^#!CLI", "", code, 1).strip()  # noqa: B034
+                        cli_command = re.sub(r"^#!CLI", "", code, 1).strip()
                         # Remove any newlines to ensure it's a single command
                         cli_command = cli_command.replace("\n", " ")
                         result = run_with_timeout(run_bash_script, [cli_command], timeout=timeout)
                     else:
                         # For Bash scripts, remove the marker and run as a bash script
-                        bash_script = re.sub(r"^#!BASH|^# Bash script", "", code, 1).strip()  # noqa: B034
+                        bash_script = re.sub(r"^#!BASH|^# Bash script", "", code, 1).strip()
                         result = run_with_timeout(run_bash_script, [bash_script], timeout=timeout)
                 # Otherwise, run as Python code
                 else:
@@ -1092,7 +1103,7 @@ Each library is listed with its description to help you understand its functiona
             else:
                 raise ValueError(f"Unexpected next_step: {next_step}")
 
-        def execute_self_critic(state: AgentState) -> AgentState:
+        def self_critic(state: AgentState) -> AgentState:
             if self.critic_count < test_time_scale_round:
                 # Generate feedback based on message history
                 messages = state["messages"]
@@ -1127,7 +1138,7 @@ Each library is listed with its description to help you understand its functiona
         workflow.add_node("execute", execute)
 
         if self_critic:
-            workflow.add_node("self_critic", execute_self_critic)
+            workflow.add_node("self_critic", self_critic)
             # Add conditional edges
             workflow.add_conditional_edges(
                 "generate",
